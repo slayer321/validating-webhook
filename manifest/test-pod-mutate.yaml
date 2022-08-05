@@ -1,0 +1,12 @@
+kind: Pod
+apiVersion: v1
+metadata:
+  name: mutate-pod
+  labels: 
+    name: raju
+spec:
+  containers:
+    - name: test-app
+      image: ubuntu:focal
+      command: ["/bin/bash"]
+      args: ["-c", "sleep infinity"]

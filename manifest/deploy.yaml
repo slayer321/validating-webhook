@@ -15,7 +15,10 @@ spec:
       serviceAccount: val-sa
       containers:
         - name: validating-webhook
-          image: 0xmantis/validating-webhook:1.0.1
+          #Use 1.0.1 for validate
+          #image: 0xmantis/validating-webhook:1.0.1
+          #Use 1.0.3 for mutate
+          image: 0xmantis/validating-webhook:1.0.3
           imagePullPolicy: Always
           ports:
             - containerPort: 443

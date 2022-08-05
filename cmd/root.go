@@ -160,6 +160,64 @@ func (c *Clientset) validatePod(w http.ResponseWriter, r *http.Request) {
 
 }
 
+func (c *Clientset) mutatePod(w http.ResponseWriter, r *http.Request) {
+	logger.Printf("received message on mutate")
+
+	deserializer := codecs.UniversalDeserializer()
+
+	admissionReviewRequest, err := admissionReviewFromRequest(r, deserializer)
+
+	if err != nil {
+		msg := fmt.Sprintf("error getting admission review from request: %v", err)
+		logger.Printf(msg)
+		w.WriteHeader(400)
+		w.Write([]byte(msg))
+		return
+	}
+
+	gvk := corev1.SchemeGroupVersion.WithKind("Pod")
+	pod := corev1.Pod{}
+
+	if _, _, err := deserializer.Decode(admissionReviewRequest.Request.Object.Raw, &gvk, &pod); err != nil {
+		msg := fmt.Sprintf("error decoding raw pod: %v", err)
+		logger.Printf(msg)
+		w.WriteHeader(500)
+		w.Write([]byte(msg))
+		return
+	}
+
+	var patch string
+	patchType := v1.PatchTypeJSONPatch
+	if _, ok := pod.Labels["apply"]; !ok {
+		patch = `[{"op":"add","path":"/metadata/labels","value":{"apply":"mutate"}}]`
+	}
+
+	admissionResponse := &v1.AdmissionResponse{}
+	admissionResponse.Allowed = true
+
+	if patch != "" {
+		admissionResponse.PatchType = &patchType
+		admissionResponse.Patch = []byte(patch)
+	}
+
+	var admissionReviewResponse v1.AdmissionReview
+	admissionReviewResponse.Response = admissionResponse
+	admissionReviewResponse.SetGroupVersionKind(admissionReviewRequest.GroupVersionKind())
+	admissionReviewResponse.Response.UID = admissionReviewRequest.Request.UID
+
+	resp, err := json.Marshal(admissionReviewResponse)
+	if err != nil {
+		msg := fmt.Sprintf("error marshalling response json: %v", err)
+		logger.Printf(msg)
+		w.WriteHeader(500)
+		w.Write([]byte(msg))
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(resp)
+}
+
 func (c *Clientset) runWebhookServer(certFile, keyFile string) {
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
@@ -168,6 +226,7 @@ func (c *Clientset) runWebhookServer(certFile, keyFile string) {
 
 	fmt.Println("Starting webhook server")
 	http.HandleFunc("/validate", c.validatePod)
+	http.HandleFunc("/mutate", c.mutatePod)
 	server := http.Server{
 		Addr: fmt.Sprintf(":%d", port),
 		TLSConfig: &tls.Config{
